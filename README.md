@@ -15,13 +15,20 @@ IssueOps treats your issue tracker like a production pipeline. It uses a determi
 IssueOps is **not** a chatbot. It is a deterministic ETL pipeline for your backlog:
 
 ```mermaid
-graph LR
-    A[New Issue] --> B(Extractor Engine);
-    B -->|Structured Signals| C{Duplicate Check};
-    C -- Match Found --> D[Flag as Duplicate];
-    C -- No Match --> E(Rules Engine);
-    E -->|High Severity| F[Label 'Critical'];
-    E -->|Low Difficulty| G[Add to Job Board];
+graph TD
+    Start[New Issue] --> Cache{Hash in Cache?};
+    Cache -- Yes --> Load[Load Metadata];
+    Cache -- No --> Extract[LLM Extraction];
+    
+    Extract --> Search[GitHub Semantic Search];
+    Search --> Verify{LLM Verifier};
+    
+    Verify -- "Match (Open)" --> Dup[🔴 Flag as Duplicate];
+    Verify -- "Match (Closed)" --> Art[💡 Link as Prior Art];
+    Verify -- "No Match" --> Rules[Rules Engine];
+    
+    Rules -->|High Severity| Label[🏷️ Label 'Critical'];
+    Rules -->|Easy + Test Hint| Board[✨ Add to Job Board];
 ```
 
 *   **Extract**: LLMs convert messy text into structured data (Severity, Stack Traces, Skills).
@@ -31,7 +38,8 @@ graph LR
 ### 🚀 Key Features
 
 *   **🛡️ Smart Caching ("The Wallet Saver")**: Uses content-addressable hashing (SHA-256) to skip re-analysis of unchanged issues, reducing LLM costs by ~90%.
-*   **🔍 Semantic Duplicate Detection**: Identifies duplicates even if the wording is different, using a "Stateless" Search+Verify approach.
+*   **💡 Prior Art Linker**: Instead of just flagging duplicates, it finds **Closed Duplicates** and presents them as "Solved Examples" to help contributors fix bugs faster.
+*   **🎯 Test Radar**: Analyzes stack traces and file paths to suggest the exact `pytest` command needed to verify a fix.
 *   **🌱 Contributor Portal**: Auto-generates a static `job_board.html` and `feed.xml` (RSS) to attract new contributors.
 *   **⚙️ Governance as Code**: All logic is defined in a transparent YAML config.
 
