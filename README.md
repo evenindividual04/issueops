@@ -117,7 +117,7 @@ Don't let "Good First Issues" get buried. IssueOps automatically generates a sta
 | Before (GitHub Default) | After (IssueOps Job Board) |
 |:---:|:---:|
 | Messy list of 50+ issues | Clean cards with "Python" and "Easy" tags |
-| !["Before"](docs/images/before_github_issues.png) | !["After"](docs/images/after_issueops_board.png) |
+
 
 ## 🛠️ Local Development
 
