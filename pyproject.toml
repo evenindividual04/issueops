@@ -3,7 +3,7 @@ name = "issueops"
 version = "1.0.0"
 description = "Automated Issue Triage & Governance as Code."
 authors = [
-    {name = "Anmol Sen", email = "anmol@seedlings.dev"},
+    {name = "Anmol Sen", email = "anmol@issueops.dev"},
 ]
 dependencies = [
     "typer[all]",

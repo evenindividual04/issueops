@@ -1,6 +1,6 @@
-# Contributing to Seedlings
+# Contributing to IssueOps
 
-We love your input! We want to make contributing to Seedlings as easy and transparent as possible.
+We love your input! We want to make contributing to IssueOps as easy and transparent as possible.
 
 ## Development Setup
 
