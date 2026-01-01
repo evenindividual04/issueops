@@ -66,4 +66,5 @@ dump.rdb
 
 # Project specific
 github_analyzer.db
-.streamlit/secrets.tomlparth-p-parekh-seedlings-*.txt
+.streamlit/secrets.toml
+parth-p-parekh-seedlings-*.txt
