@@ -68,3 +68,7 @@ dump.rdb
 github_analyzer.db
 .streamlit/secrets.toml
 parth-p-parekh-seedlings-*.txt
+job_board.html
+feed.xml
+output.txt
+*.txt
