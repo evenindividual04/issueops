@@ -12,26 +12,23 @@ We treat GitHub Triage as a data engineering problem, not a conversational AI pr
 ## The Pipeline
 
 ```mermaid
-graph LR
-    A[GitHub Issue] -->|Fetch| B(Raw Text)
-    B -->|Extract (LLM)| C{IssueMetadata}
-    C -->|Transform (Rules)| D{TriageAction}
-    D -->|Load| E[GitHub API]
+graph TD
+    Start[New Issue] --> Cache{Hash in Cache?};
+    Cache -- Yes --> Load[Load Metadata];
+    Cache -- No --> Extract[LLM Extraction];
     
-    subgraph Phase 1: Extraction
-    B --> C
-    end
+    Extract --> Search[GitHub Semantic Search];
+    Search --> Verify{LLM Verifier};
     
-    subgraph Phase 2: Transformation
-    C --> D
-    end
+    Verify -- "Match (Open)" --> Dup[🔴 Flag as Duplicate];
+    Verify -- "Match (Closed)" --> Art[💡 Link as Prior Art];
+    Verify -- "No Match" --> Rules[Rules Engine];
     
-    subgraph Phase 3: Loading
-    D --> E
-    end
+    Rules -->|High Severity| Label[🏷️ Label 'Critical'];
+    Rules -->|Easy + Test Hint| Board[✨ Add to Job Board];
 ```
 
-### Phase## System Diagrams
+## System Diagrams
 
 ```mermaid
 graph TD
