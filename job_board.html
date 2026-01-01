@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contributor Job Board</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+    <style>
+        .badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            margin-right: 5px;
+        }
+    </style>
+    <link rel="alternate" type="application/atom+xml" title="Contributor Feed" href="feed.xml" />
+</head>
+
+<body>
+    <main class="container">
+        <h1>🌱 Contributor Job Board</h1>
+        <p>Expertly curated "Good First Issues" for new contributors.</p>
+
+        <div class="filter-bar">
+            <input type="search" id="search" placeholder="Filter by skill..." onkeyup="filterIssues()">
+        </div>
+
+        <div id="issue-list">
+            
+            <article class="card" data-skills="python">
+                <header>
+                    <span class="badge badge-medium">MEDIUM</span>
+                    
+                    <span class="badge badge-skill">python</span>
+                    
+                    <a href="https://github.com/fastapi/fastapi/issues/13175" target="_blank"><strong>#13175 Duplicated OperationID when adding route with multiple methods</strong></a>
+                </header>
+                <p>Fix duplicated OperationID when adding a FastAPI route with multiple methods.</p>
+                <footer>
+                    <a href="https://github.com/fastapi/fastapi/issues/13175" role="button" class="outline">View on GitHub</a>
+                </footer>
+            </article>
+            
+        </div>
+    </main>
+
+    <script>
+        function filterIssues() {
+            const input = document.getElementById('search').value.toLowerCase();
+            const cards = document.getElementsByClassName('card');
+
+            for (let i = 0; i < cards.length; i++) {
+                const skills = cards[i].getAttribute('data-skills').toLowerCase();
+                const title = cards[i].innerText.toLowerCase();
+
+                if (skills.includes(input) || title.includes(input)) {
+                    cards[i].style.display = "";
+                } else {
+                    cards[i].style.display = "none";
+                }
+            }
+        }
+    </script>
+</body>
+
+</html>

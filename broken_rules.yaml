@@ -1,0 +1,3 @@
+- name: "Broken Rule"
+  condition: {}
+  # Missing 'action' field

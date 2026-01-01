@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Contributor Job Board</title>
+  <link href="{{ site_url }}/feed.xml" rel="self"/>
+  <link href="{{ site_url }}"/>
+  <updated>{{ now }}</updated>
+  <id>{{ site_url }}</id>
+  <author>
+    <name>Sentinel AI Triage</name>
+  </author>
+
+  {% for item in issues %}
+  <entry>
+    <title>{{ item.title | e }}</title>
+    <link href="{{ item.url }}"/>
+    <id>{{ item.url }}</id>
+    <updated>{{ item.updated_at }}</updated>
+    <summary>{{ item.metadata.summary | e }}</summary>
+    {% for skill in item.metadata.required_skills %}
+    <category term="{{ skill }}"/>
+    {% endfor %}
+    <content type="html">
+      <![CDATA[
+        <p><strong>Difficulty:</strong> {{ item.metadata.difficulty }}</p>
+        <p><strong>Skills:</strong> {{ item.metadata.required_skills | join(', ') }}</p>
+        <p>{{ item.metadata.summary }}</p>
+      ]]>
+    </content>
+  </entry>
+  {% endfor %}
+</feed>

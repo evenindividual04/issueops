@@ -1,0 +1,41 @@
+
+================================================================================
+File: examples/.keep
+Size: 54 B
+================================================================================
+
+This file ensures the data/examples directory exists.
+
+
+================================================================================
+File: examples/crash_issue.txt
+Size: 589 B
+================================================================================
+
+### Description
+The application crashes immediately when I try to upload a large PDF file (approx 50MB).
+
+### Steps to Reproduce
+1. Login to the dashboard.
+2. Go to "Documents".
+3. Click "Upload".
+4. Select a 50MB PDF.
+
+### Expected Behavior
+File should upload or show an error message.
+
+### Actual Behavior
+The screen goes blank and the server process terminates.
+
+### Logs
+```
+[ERROR] 2023-10-27 10:00:01 - CRITICAL FAILURE
+Process 1234 terminated unexpectedly.
+Segmentation fault (core dumped)
+at /usr/lib/libpdf.so (0x0000)
+```
+
+### Environment
+- OS: Ubuntu 22.04 LTS
+- Version: 1.2.0
+

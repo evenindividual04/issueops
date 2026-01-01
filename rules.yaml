@@ -1,0 +1,69 @@
+# Unified Triage Rules
+# Governance for Maintainers (Criticals) and Contributors (Opportunities).
+# Processed top-to-bottom. First match wins.
+
+# --- TIER 1: MAINTAINER FIRES (P5) ---
+- name: "Critical Security Issue"
+  condition:
+    "==": [{ "var": "is_security_issue" }, true]
+  action:
+    priority_score: 5
+    labels: ["security", "critical", "triage/immediate"]
+    reasoning: "Security vulnerability detected."
+
+- name: "Critical System Crash"
+  condition:
+    "or":
+      - "==": [{ "var": "is_crash" }, true]
+      - "==": [{ "var": "is_blocker" }, true]
+  action:
+    priority_score: 5
+    labels: ["bug", "critical", "priority:high"]
+    reasoning: "System crash or release blocker detected."
+
+# --- TIER 2: CONTRIBUTOR GOLD (P1) ---
+- name: "Good First Issue (Documentation)"
+  condition:
+    "and":
+      - "==": [{ "var": "difficulty" }, "easy"]
+      - "==": [{ "var": "primary_area" }, "documentation"]
+  action:
+    priority_score: 1
+    labels: ["good-first-issue", "documentation", "level:starter"]
+    reasoning: "Easy documentation task perfect for new contributors."
+
+- name: "Good First Issue (General)"
+  condition:
+    "==": [{ "var": "difficulty" }, "easy"]
+  action:
+    priority_score: 1
+    labels: ["good-first-issue", "level:starter"]
+    reasoning: "Identified as a low-complexity task."
+
+# --- TIER 3: CONTRIBUTOR SILVER (P2) ---
+- name: "Help Wanted (Medium Context)"
+  condition:
+    "==": [{ "var": "difficulty" }, "medium"]
+  action:
+    priority_score: 2
+    labels: ["help-wanted", "level:intermediate"]
+    reasoning: "Moderate complexity task requiring some codebase knowledge."
+
+# --- TIER 4: MAINTAINER STANDARD (P3) ---
+- name: "Standard Bug/Feature"
+  condition:
+    "or":
+        - ">=": [{ "var": "extraction_confidence" }, 0.6]
+  action:
+    priority_score: 3
+    labels: ["triage/needs-review"]
+    reasoning: "Standard issue requiring maintainer review."
+
+# --- TIER 5: AMBIGUOUS (Fallback) ---
+- name: "Ambiguous low confidence"
+  condition:
+    "<": [{ "var": "extraction_confidence" }, 0.6]
+  action:
+    priority_score: 3
+    labels: ["triage/manual"]
+    reasoning: "Low AI confidence. Human review required."

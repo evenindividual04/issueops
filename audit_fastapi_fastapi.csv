@@ -1,0 +1,4 @@
+id,title,ai_difficulty,ai_priority,ai_skills,human_difficulty,human_priority,notes
+13471,Basic auth `realm` is REQUIRED but handled as optional,medium,5,python,,,
+13399,Dependency Models created from Form input data are loosing metadata(field set) and are enforcing validation on default values.,medium,5,"python, fastapi, pydantic, pytest",,,
+13175,Duplicated OperationID when adding route with multiple methods,medium,2,python,,,

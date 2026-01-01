@@ -1,0 +1,26 @@
+[project]
+name = "issueops"
+version = "1.0.0"
+description = "Automated Issue Triage & Governance as Code."
+authors = [
+    {name = "Anmol Sen", email = "anmol@seedlings.dev"},
+]
+dependencies = [
+    "typer[all]",
+    "google-generativeai",
+    "pydantic",
+    "PyYAML",
+    "rich",
+    "httpx",
+    "jinja2",
+    "python-dotenv",
+    "json-logic-quibble"
+]
+requires-python = ">=3.9"
+
+[project.scripts]
+issueops = "app.cli.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

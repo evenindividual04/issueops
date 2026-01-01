@@ -1,0 +1,39 @@
+
+    async def apply_labels(self, owner: str, repo: str, issue_number: int, labels: List[str]) -> bool:
+        """Apply labels to an issue."""
+        if not labels:
+            return True
+            
+        url = f"{self.base_url}/repos/{owner}/{repo}/issues/{issue_number}/labels"
+        
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                response = await client.post(
+                    url,
+                    headers=self.headers,
+                    json={"labels": labels}
+                )
+                response.raise_for_status()
+                logger.info(f"Applied labels {labels} to {owner}/{repo}#{issue_number}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to apply labels: {e}")
+                return False
+
+    async def post_comment(self, owner: str, repo: str, issue_number: int, body: str) -> bool:
+        """Post a comment to an issue."""
+        url = f"{self.base_url}/repos/{owner}/{repo}/issues/{issue_number}/comments"
+        
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                response = await client.post(
+                    url,
+                    headers=self.headers,
+                    json={"body": body}
+                )
+                response.raise_for_status()
+                logger.info(f"Posted comment to {owner}/{repo}#{issue_number}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to post comment: {e}")
+                return False
