@@ -50,7 +50,15 @@ class DuplicateService:
         # 3. Verify
         try:
             result = await self.extractor.find_semantic_duplicate(full_text, candidates)
-            logger.info(f"Duplicate result: ID={result.duplicate_number} Conf={result.confidence}")
+            
+            # Enrich with state if match found
+            if result.duplicate_number:
+                # Find the candidate that matched
+                matched_candidate = next((c for c in candidates if c['number'] == result.duplicate_number), None)
+                if matched_candidate:
+                    result.matched_issue_state = matched_candidate['state']
+            
+            logger.info(f"Duplicate result: ID={result.duplicate_number} State={result.matched_issue_state} Conf={result.confidence}")
             return result
         except Exception as e:
              logger.error(f"Verification failed: {e}")

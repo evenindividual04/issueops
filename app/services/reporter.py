@@ -17,10 +17,10 @@ class Reporter:
     def __init__(self, template_dir: str = "app/templates"):
         self.env = Environment(loader=FileSystemLoader(template_dir))
         
-    def generate_board(self, items: List[BoardItem], output_path: str = "job_board.html") -> str:
+    def generate_board(self, items: List[BoardItem], output_path: str = "job_board.html", site_url: str = "") -> str:
         """Render the Job Board HTML."""
         template = self.env.get_template("board.html")
-        html = template.render(issues=items)
+        html = template.render(issues=items, site_url=site_url)
         
         with open(output_path, "w") as f:
             f.write(html)

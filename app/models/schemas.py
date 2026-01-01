@@ -41,6 +41,10 @@ class IssueMetadata(BaseModel):
         description="Architectural component."
     )
     
+    # --- TEST COMPANION & PRIOR ART ---
+    verification_hint: Optional[str] = Field(None, description="A suggested terminal command to run tests, e.g., 'pytest tests/auth/'.")
+    related_closed_issue_id: Optional[int] = Field(None, description="ID of a similar closed issue that might be a solution blueprint.")
+
     extraction_confidence: float = Field(..., ge=0.0, le=1.0)
 
     class Config:
@@ -66,5 +70,6 @@ class RuleDefinition(BaseModel):
 class DuplicateResult(BaseModel):
     """Result of semantic duplicate verification."""
     duplicate_number: Optional[int] = Field(None, description="Issue number of duplicate, or null.")
+    matched_issue_state: Optional[str] = Field(None, description="State of the matched issue: 'open' or 'closed'.")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score 0.0-1.0")
     reasoning: str = Field(..., description="Why it is or isn't a duplicate.")

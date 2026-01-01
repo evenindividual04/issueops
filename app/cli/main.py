@@ -268,10 +268,11 @@ def report(
             return
 
         reporter = Reporter()
-        path = reporter.generate_board(board_items)
+        site_url = f"https://github.com/{owner}/{repo_name}"
+        
+        path = reporter.generate_board(board_items, site_url=site_url)
         
         # Generate Feed
-        site_url = f"https://github.com/{owner}/{repo_name}"
         feed_path = reporter.generate_feed(board_items, site_url=site_url)
 
         console.print(f"[bold green]✔ Job Board Generated: {path}[/bold green]")
@@ -361,17 +362,26 @@ def action(
             
             dupe_result = asyncio.run(dupe_service.check_duplicate(owner, repo_name, gh_issue.title, gh_issue.body, gh_issue.number))
             
+            related_closed_issue_id = None
+
             if dupe_result.confidence >= 0.9 and dupe_result.duplicate_number:
-                console.print(f"[bold red]DUPLICATE DETECTED:[/bold red] #{dupe_result.duplicate_number}")
-                console.print(f"Reason: {dupe_result.reasoning}")
+                # BRANCH LOGIC: Open vs Closed
+                if dupe_result.matched_issue_state == 'open':
+                     console.print(f"[bold red]DUPLICATE DETECTED (OPEN):[/bold red] #{dupe_result.duplicate_number}")
+                     console.print(f"Reason: {dupe_result.reasoning}")
+                     
+                     if apply:
+                         msg = f"Marking as duplicate of #{dupe_result.duplicate_number}.\nLogic: {dupe_result.reasoning}"
+                         asyncio.run(gh.post_comment(owner, repo_name, issue_number, msg))
+                         asyncio.run(gh.apply_labels(owner, repo_name, issue_number, ["duplicate"]))
+                     else:
+                         console.print(f"[dim][DRY RUN] Would comment 'Duplicate of #{dupe_result.duplicate_number}' and label as 'duplicate'[/dim]")
+                     return
                 
-                if apply:
-                    msg = f"Marking as duplicate of #{dupe_result.duplicate_number}.\nLogic: {dupe_result.reasoning}"
-                    asyncio.run(gh.post_comment(owner, repo_name, issue_number, msg))
-                    asyncio.run(gh.apply_labels(owner, repo_name, issue_number, ["duplicate"]))
-                else:
-                    console.print(f"[dim][DRY RUN] Would comment 'Duplicate of #{dupe_result.duplicate_number}' and label as 'duplicate'[/dim]")
-                return
+                elif dupe_result.matched_issue_state == 'closed':
+                     console.print(f"[bold blue]PRIOR ART DETECTED (CLOSED):[/bold blue] #{dupe_result.duplicate_number}")
+                     console.print("Continuing analysis, but linking to this solved case.")
+                     related_closed_issue_id = dupe_result.duplicate_number
 
             if 0.7 <= dupe_result.confidence < 0.9 and dupe_result.duplicate_number:
                  if apply:
@@ -384,6 +394,10 @@ def action(
             # Extract
             text = f"{gh_issue.title}\n{gh_issue.body}\n" + "\n".join(gh_issue.comments)
             meta = asyncio.run(extractor.extract(text))
+            
+            # Inject Prior Art
+            if related_closed_issue_id:
+                meta.related_closed_issue_id = related_closed_issue_id
             
             # Decide
             action_result = triage.evaluate(meta)

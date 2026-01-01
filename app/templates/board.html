@@ -11,7 +11,32 @@
             padding: 2px 8px;
             border-radius: 4px;
             font-size: 0.8em;
-            margin-right: 5px;
+        }
+
+        .hint-box {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 0.9em;
+            border: 1px solid #ddd;
+        }
+
+        .hint-test {
+            background-color: #f0fbfd;
+            border-color: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .hint-art {
+            background-color: #fff3cd;
+            border-color: #ffeeba;
+            color: #856404;
+        }
+
+        .hint-box code {
+            display: block;
+            margin-top: 5px;
+            background: rgba(255, 255, 255, 0.7);
         }
     </style>
     <link rel="alternate" type="application/atom+xml" title="Contributor Feed" href="feed.xml" />
@@ -38,6 +63,22 @@
                     <a href="{{ item.url }}" target="_blank"><strong>#{{ item.number }} {{ item.title }}</strong></a>
                 </header>
                 <p>{{ item.metadata.summary }}</p>
+
+                {% if item.metadata.verification_hint %}
+                <div class="hint-box hint-test">
+                    <strong>🎯 Verify Fix:</strong>
+                    <code>{{ item.metadata.verification_hint }}</code>
+                </div>
+                {% endif %}
+
+                {% if item.metadata.related_closed_issue_id %}
+                <div class="hint-box hint-art">
+                    <strong>💡 Prior Art:</strong>
+                    <a href="{{ site_url }}/issues/{{ item.metadata.related_closed_issue_id }}" target="_blank">
+                        See similar solved Issue #{{ item.metadata.related_closed_issue_id }}
+                    </a>
+                </div>
+                {% endif %}
                 <footer>
                     <a href="{{ item.url }}" role="button" class="outline">View on GitHub</a>
                 </footer>

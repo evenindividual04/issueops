@@ -48,6 +48,7 @@ SCHEMA REFERENCE:
 - difficulty (str): "easy", "medium", "hard", "unknown"
 - required_skills (List[str]): e.g. ["python", "docker"]
 - primary_area (str): "frontend", "backend" etc.
+- verification_hint (str|null): A single shell command to verify the fix (e.g. "pytest tests/test_login.py"). Infer from file paths/stacktrace.
 - extraction_confidence (float): 0.0 to 1.0
 
 ISSUE TEXT:
