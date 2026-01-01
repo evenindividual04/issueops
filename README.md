@@ -124,12 +124,12 @@ Don't let "Good First Issues" get buried. IssueOps automatically generates a sta
 For developers who want to contribute to IssueOps itself:
 
 ```bash
-# 1. Install
-pip install -r requirements.txt
+# 1. Install (Editable Mode)
+pip install -e .
 
 # 2. Configure .env
 cp .env.example .env
 
 # 3. Run CLI
-python -m app.cli.main scan --repo owner/repo --limit 5
+issueops scan owner/repo 123 --limit 5
 ```

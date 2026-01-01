@@ -26,5 +26,8 @@ COPY --from=builder /opt/venv /opt/venv
 # Copy application code
 COPY . .
 
+# Install the package
+RUN pip install .
+
 # Default entrypoint (can be overridden by action.yml)
-ENTRYPOINT ["python", "main.py"]
+ENTRYPOINT ["issueops"]

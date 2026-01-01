@@ -4,9 +4,9 @@ We love your input! We want to make contributing to IssueOps as easy and transpa
 
 ## Development Setup
 
-1.  **Clone the repo** and install dependencies:
+1.  **Clone the repo** and install dependencies (Editable Mode):
     ```bash
-    pip install -r requirements.txt
+    pip install -e .
     ```
 2.  **Environment**: Copy `.env.example` to `.env` and add your `GEMINI_API_KEY`.
 3.  **Run Tests**:
