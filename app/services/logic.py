@@ -20,7 +20,7 @@ def apply(logic: Any, data: Any = None) -> Any:
 
     # Operations
     if operator == "var":
-        return get_var(data, values[0] if values else None, values[1] if len(values) > 1 else None)
+        return get_var(data, str(values[0]) if values else "", values[1] if len(values) > 1 else None)
 
     # Recursive evaluation
     eval_values = [apply(v, data) for v in values]
