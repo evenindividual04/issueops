@@ -399,9 +399,13 @@ def report(
 
 
 
+_LOCK_LABELS = {"triage/locked", "triage/override"}
+
+
 @app.command()
 def action(
     apply: bool = typer.Option(True, help="Apply changes (default True for Actions)"),
+    force: bool = typer.Option(False, "--force", help="Bypass idempotency + lock checks"),
 ):
     """
     GitHub Action Entrypoint.
@@ -411,6 +415,7 @@ def action(
     import os
 
     from app.core.config import settings
+    from app.services.cache import CacheManager
     from app.services.github_service import GitHubService
 
     console.print("[bold blue]🚀 Starting AI Triage Action[/bold blue]")
@@ -471,6 +476,26 @@ def action(
 
             # Fetch
             gh_issue = asyncio.run(gh.fetch_issue(owner, repo_name, issue_number))
+
+            # --- HUMAN OVERRIDE LOCK ---
+            if not force and _LOCK_LABELS.intersection(set(gh_issue.labels)):
+                console.print(
+                    f"[yellow]Skipping triage: lock label present "
+                    f"({_LOCK_LABELS.intersection(set(gh_issue.labels))}).[/yellow]"
+                )
+                return
+
+            # --- IDEMPOTENCY CHECK ---
+            cache_mgr = CacheManager()
+            body_for_signature = f"{gh_issue.title}\n{gh_issue.body or ''}"
+            if not force and cache_mgr.is_recently_processed(
+                owner, repo_name, issue_number, body_for_signature
+            ):
+                console.print(
+                    "[dim]Skipping: identical issue body was triaged within "
+                    "the idempotency window. Pass --force to override.[/dim]"
+                )
+                return
 
             # --- DUPLICATE CHECK ---
             from app.services.duplicate_service import DuplicateService
@@ -533,6 +558,8 @@ def action(
             success = asyncio.run(gh.apply_labels(owner, repo_name, issue_number, action_result.labels))
             if success:
                 console.print("[bold green]✔ Labels applied[/bold green]")
+                cache_mgr.mark_processed(owner, repo_name, issue_number, body_for_signature)
+                cache_mgr.save()
             else:
                 console.print("[bold red]✘ Failed to apply labels[/bold red]")
                 raise typer.Exit(code=1)
