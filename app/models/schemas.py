@@ -73,3 +73,13 @@ class DuplicateResult(BaseModel):
     matched_issue_state: Optional[str] = Field(None, description="State of the matched issue: 'open' or 'closed'.")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score 0.0-1.0")
     reasoning: str = Field(..., description="Why it is or isn't a duplicate.")
+
+class RuleResult(BaseModel):
+    """
+    Result of a single rule evaluation trace.
+    """
+    rule_name: str
+    matched: bool
+    action: Optional[TriageAction] = None
+    evaluation_data: Optional[Dict[str, Any]] = None # Snapshot of data used
+

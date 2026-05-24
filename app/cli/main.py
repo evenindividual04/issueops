@@ -14,6 +14,108 @@ app = typer.Typer(help="GitHub Issue Triage Automation CLI")
 console = Console()
 
 @app.command()
+def init(
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing configuration"),
+):
+    """
+    Scaffold a new configuration file with best-practice rules.
+    """
+    from app.cli.templates import GOLDEN_CONFIG
+    import os
+
+    config_path = ".github/issueops.yaml"
+
+    if os.path.exists(config_path) and not force:
+        console.print(f"[yellow]Configuration already found at {config_path}[/yellow]")
+        if not typer.confirm("Do you want to overwrite it?"):
+            console.print("[dim]Aborted.[/dim]")
+            raise typer.Exit()
+
+    # Ensure .github directory exists
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+
+    with open(config_path, "w") as f:
+        f.write(GOLDEN_CONFIG)
+
+    console.print(f"[bold green]✅ Configuration created at {config_path}[/bold green]")
+    console.print("Run `issueops test` to verify it.")
+
+@app.command()
+def test(
+    body: Optional[str] = typer.Option(None, help="Simulate issue body text (End-to-End Mode)"),
+    # Logic Unit Test Flags
+    is_crash: bool = typer.Option(False, help="[Logic Mode] Force is_crash=True"),
+    difficulty: str = typer.Option("unknown", help="[Logic Mode] Force difficulty (easy/medium/hard)"),
+    days_since_update: int = typer.Option(0, help="[Context] Simulate days since last update"),
+    current_labels: List[str] = typer.Option(None, "--label", help="[Context] Existing labels on the issue"),
+    rules: Optional[str] = typer.Option(None, help="Path to rules configuration"),
+):
+    """
+    Simulate Rule Execution.
+    Mode A: Provide --body to run the full LLM extraction pipeline.
+    Mode B: Provide flags (e.g. --is-crash) to test logic directly.
+    """
+    import os
+    if not rules:
+        if os.path.exists(".github/issueops.yaml"): rules = ".github/issueops.yaml"
+        elif os.path.exists("rules.yaml"): rules = "rules.yaml"
+        else:
+            console.print("[red]No rules found. Run `issueops init` first.[/red]")
+            raise typer.Exit(1)
+
+    triage = TriageService(rules)
+    console.print(f"[bold blue]Testing Rules from {rules}[/bold blue]")
+
+    # Build Metadata
+    if body:
+        # Mode A: End-to-End
+        with console.status("Running LLM Extraction..."):
+            extractor = ExtractorService()
+            try:
+                # Mock minimal context for extract
+                metadata = asyncio.run(extractor.extract(body))
+                console.print("[dim]LLM Extraction Complete[/dim]")
+            except Exception as e:
+                 console.print(f"[red]Extraction Failed: {e}[/red]")
+                 raise typer.Exit(1)
+    else:
+        # Mode B: Manual Flags
+        # Construct specific test case
+        metadata = IssueMetadata(
+            has_reproduction_steps=True, # Default assumption for logic test
+            has_stacktrace=False,
+            has_logs=False,
+            is_crash=is_crash,
+            summary="Manual Test",
+            difficulty=difficulty,
+            required_skills=[],
+            extraction_confidence=1.0,
+            primary_area="unknown"
+        )
+        console.print("[dim]Using Manual Metadata Flags[/dim]")
+
+    # Build Context
+    context = {
+        "days_since_update": days_since_update,
+        "labels": current_labels or []
+    }
+    console.print(f"Context: {context}")
+
+    # Trace
+    results = triage.trace(metadata, context)
+    
+    # Render Output
+    console.print("\n[bold]Evaluation Trace:[/bold]")
+    for res in results:
+        if res.matched:
+            console.print(f"[green][MATCH][/green] Rule '{res.rule_name}'")
+            console.print(f"  -> Priority: {res.action.priority_score}")
+            console.print(f"  -> Labels: {res.action.labels}")
+            console.print(f"  -> Reason: {res.action.reasoning}")
+        else:
+            console.print(f"[dim][SKIP]  Rule '{res.rule_name}' (Condition failed)[/dim]")
+
+@app.command()
 def extract(file: str = typer.Argument(..., help="Path to text file containing the issue body")):
     """
     Debug Mode: Run ONLY the Extractor Service on a file.

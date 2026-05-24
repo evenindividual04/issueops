@@ -4,7 +4,7 @@ import logging
 from typing import List, Dict, Any
 from pydantic import TypeAdapter, ValidationError
 
-from app.models.schemas import IssueMetadata, TriageAction, RuleDefinition
+from app.models.schemas import IssueMetadata, TriageAction, RuleDefinition, RuleResult
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ class TriageService:
             else:
                 self.rules = []
 
-    def evaluate(self, metadata: IssueMetadata) -> TriageAction:
+    def evaluate(self, metadata: IssueMetadata, context: Dict[str, Any] = None) -> TriageAction:
         """
         Evaluate metadata against loaded rules.
         Returns the action of the FIRST matching rule.
@@ -57,6 +57,9 @@ class TriageService:
         """
         # Convert Pydantic model to dict for json-logic
         data = metadata.model_dump()
+        if context:
+            data.update(context)
+
 
         for rule in self.rules:
             try:
@@ -73,3 +76,29 @@ class TriageService:
             labels=["triage/needs-review"],
             reasoning="No specific triage rules matched. Defaulting to normal priority."
         )
+
+    def trace(self, metadata: IssueMetadata, context: Dict[str, Any] = None) -> List[RuleResult]:
+        """
+        Evaluate ALL rules and return a detailed trace of the decision tree.
+        Unlike evaluate(), this does not stop at the first match.
+        """
+        data = metadata.model_dump()
+        if context:
+            data.update(context)
+
+        results = []
+        for rule in self.rules:
+            matched = False
+            try:
+                if json_logic_apply(rule.condition, data):
+                    matched = True
+            except Exception as e:
+                logger.error(f"Error checking rule '{rule.name}': {e}")
+            
+            results.append(RuleResult(
+                rule_name=rule.name,
+                matched=matched,
+                action=rule.action if matched else None
+            ))
+        
+        return results
