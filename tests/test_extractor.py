@@ -93,23 +93,43 @@ async def test_extract_retries_on_bad_json():
 
 
 @pytest.mark.asyncio
-async def test_extract_raises_after_two_failures():
+async def test_extract_falls_back_after_two_failures():
+    """After both LLM attempts fail, fall back to deterministic regex extractor."""
     patcher, mock_client = _patch_client(return_value=_mock_response("not json"))
     with patcher:
         svc = ExtractorService(use_cache=False)
-        with pytest.raises(ValueError, match="Failed to extract"):
-            await svc.extract("Bad input")
+        result = await svc.extract("App crashed with segfault on startup")
 
+    assert result.extraction_mode == "fallback"
+    assert result.extraction_confidence == 0.5
+    assert result.is_crash is True  # regex detected 'crashed' + 'segfault'
     assert mock_client.aio.models.generate_content.call_count == 2
 
 
 @pytest.mark.asyncio
-async def test_extract_raises_on_empty_response():
+async def test_extract_falls_back_on_empty_response():
     patcher, _ = _patch_client(return_value=_mock_response(""))
     with patcher:
         svc = ExtractorService(use_cache=False)
-        with pytest.raises(ValueError):
-            await svc.extract("Some text")
+        result = await svc.extract("Some text")
+    assert result.extraction_mode == "fallback"
+
+
+@pytest.mark.asyncio
+async def test_circuit_open_uses_fallback_immediately():
+    """When breaker is pre-tripped, no LLM call happens."""
+    patcher, mock_client = _patch_client(return_value=_mock_response(VALID_JSON))
+    with patcher:
+        svc = ExtractorService(use_cache=False)
+        # Manually trip the breaker.
+        svc.breaker._state = svc.breaker.state.__class__("open")
+        import time as _t
+        svc.breaker._opened_at = _t.monotonic()
+        svc.breaker._failures = 99
+
+        result = await svc.extract("Anything")
+    assert result.extraction_mode == "fallback"
+    assert mock_client.aio.models.generate_content.call_count == 0
 
 
 @pytest.mark.asyncio

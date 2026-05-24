@@ -103,6 +103,7 @@ def test(
             verification_hint=None,
             related_closed_issue_id=None,
             extraction_confidence=1.0,
+            extraction_mode="llm",
         )
         console.print("[dim]Using Manual Metadata Flags[/dim]")
 

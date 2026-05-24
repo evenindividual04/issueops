@@ -6,7 +6,13 @@ from urllib.parse import quote
 
 import httpx
 
+from app.core.rate_limiter import TokenBucket
+
 logger = logging.getLogger(__name__)
+
+# GitHub secondary rate limit for writes is ~1 req/sec per token.
+# Conservative bucket: 1 token capacity, refills at 1/sec.
+_MUTATION_BUCKET = TokenBucket(rate=1.0, capacity=1.0)
 
 
 @dataclass
@@ -260,6 +266,7 @@ class GitHubService:
 
         url = f"{self.base_url}/repos/{owner}/{repo}/issues/{issue_number}/labels"
 
+        await _MUTATION_BUCKET.acquire()
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 response = await client.post(
@@ -290,6 +297,7 @@ class GitHubService:
             f"{self.base_url}/repos/{owner}/{repo}/issues/{issue_number}"
             f"/labels/{encoded}"
         )
+        await _MUTATION_BUCKET.acquire()
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 resp = await client.delete(url, headers=self.headers)
@@ -373,6 +381,7 @@ class GitHubService:
         """Post a comment on an issue."""
         url = f"{self.base_url}/repos/{owner}/{repo}/issues/{issue_number}/comments"
 
+        await _MUTATION_BUCKET.acquire()
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 response = await client.post(
@@ -424,6 +433,7 @@ class GitHubService:
         """Edit an existing comment (PATCH /issues/comments/{id})."""
         url = f"{self.base_url}/repos/{owner}/{repo}/issues/comments/{comment_id}"
 
+        await _MUTATION_BUCKET.acquire()
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 resp = await client.patch(url, headers=self.headers, json={"body": body})

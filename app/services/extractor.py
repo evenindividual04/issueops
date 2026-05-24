@@ -1,21 +1,66 @@
 import json
 import logging
+import re
 
 from google import genai
 from google.genai import types
 from pydantic import ValidationError
 
+from app.core.circuit_breaker import CircuitBreaker, CircuitOpenError
 from app.core.config import settings
 from app.models.schemas import DuplicateResult, IssueMetadata
 from app.services.cache import CacheManager
 
 logger = logging.getLogger(__name__)
 
+_CRASH_PATTERNS = re.compile(
+    r"\b(panic|segfault|sigsegv|stack overflow|core dumped|fatal error|"
+    r"unrecoverable|nullpointerexception|crash(?:ed|es|ing)?)\b",
+    re.IGNORECASE,
+)
+_SECURITY_PATTERNS = re.compile(
+    r"\b(cve-\d{4}-\d+|xss|csrf|sql injection|rce|"
+    r"unauthorized|privilege escalation|vulnerab)",
+    re.IGNORECASE,
+)
+_STACKTRACE_PATTERNS = re.compile(
+    r"(traceback \(most recent call last\)|^\s+at [\w.$]+\(.*?\)|^\s+File \".*?\", line \d+)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _fallback_extract(text: str) -> IssueMetadata:
+    """
+    Deterministic regex-based extraction. Used when the LLM circuit is open.
+    Returns confidence 0.5 so the confidence gate routes the issue to
+    'triage/low-confidence' rather than acting on the regex output.
+    """
+    return IssueMetadata(
+        has_reproduction_steps=False,
+        has_stacktrace=bool(_STACKTRACE_PATTERNS.search(text)),
+        has_logs=False,
+        is_crash=bool(_CRASH_PATTERNS.search(text)),
+        is_security_issue=bool(_SECURITY_PATTERNS.search(text)),
+        is_blocker=False,
+        operating_system=None,
+        environment="unknown",
+        summary=text.strip().splitlines()[0][:200] if text.strip() else "(empty)",
+        difficulty="unknown",
+        required_skills=[],
+        primary_area="unknown",
+        verification_hint=None,
+        related_closed_issue_id=None,
+        extraction_confidence=0.5,
+        extraction_mode="fallback",
+    )
+
 
 class ExtractorService:
     """
     AI-powered extraction engine.
     Converts unstructured issue text into strict JSON metadata.
+    Wrapped in a circuit breaker — on sustained LLM failure, falls back to
+    a deterministic regex extractor with low confidence.
     """
 
     def __init__(self, use_cache: bool = True):
@@ -25,6 +70,7 @@ class ExtractorService:
         self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
         self.model = settings.LLM_MODEL
         self.cache = CacheManager() if use_cache else None
+        self.breaker = CircuitBreaker(failure_threshold=5, recovery_seconds=60.0)
 
     def _build_prompt(self, text: str) -> str:
         return f"""You are a technical screener for an Open Source Project.
@@ -67,19 +113,25 @@ ISSUE TEXT:
         prompt = self._build_prompt(text)
 
         try:
-            result = await self._generate_and_parse(prompt)
+            result = await self.breaker.call(self._generate_and_parse, prompt)
             if self.cache:
                 self.cache.set(text, result)
                 self.cache.save()
             return result
+        except CircuitOpenError as e:
+            logger.warning(f"LLM circuit open — using fallback extractor: {e}")
+            return _fallback_extract(text)
         except Exception as first_error:
             logger.warning(f"Extraction attempt 1 failed: {first_error}. Retrying...")
             retry_prompt = prompt + "\n\nError: Invalid JSON returned. Output ONLY standard JSON."
             try:
-                return await self._generate_and_parse(retry_prompt)
+                return await self.breaker.call(self._generate_and_parse, retry_prompt)
+            except CircuitOpenError:
+                return _fallback_extract(text)
             except Exception as e:
                 logger.error(f"Extraction failed permanently: {e}")
-                raise ValueError(f"Failed to extract metadata: {e}") from e
+                # Last-resort: degrade rather than fail the Action entirely.
+                return _fallback_extract(text)
 
     async def _generate_and_parse(self, prompt: str) -> IssueMetadata:
         response = await self.client.aio.models.generate_content(

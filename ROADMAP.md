@@ -58,16 +58,16 @@
 
 ### 1.5 Circuit Breaker for LLM
 
-- [ ] Wrap `ExtractorService._generate_and_parse` in a circuit breaker (consecutive failure count, open after 5, half-open after 60s).
-- [ ] When circuit is open, fall back to a deterministic rules-only path: regex-based crash detection on raw text.
-- [ ] Add `extraction_mode: Literal["llm", "fallback"]` field to `IssueMetadata`. Confidence forced to 0.5 in fallback mode → routes to `triage/low-confidence` by default.
+- [x] Wrap `ExtractorService._generate_and_parse` in a circuit breaker (threshold 5, half-open after 60s).
+- [x] When circuit is open, fall back to regex-based extraction (`_CRASH_PATTERNS`, `_SECURITY_PATTERNS`, `_STACKTRACE_PATTERNS`).
+- [x] Added `extraction_mode: Literal["llm", "fallback"]` to `IssueMetadata`. Confidence 0.5 in fallback → routes to `triage/low-confidence`.
 
 **Files:** new `app/core/circuit_breaker.py`, `app/services/extractor.py`, `app/models/schemas.py`.
 
 ### 1.6 Global Rate Limiter
 
-- [ ] Add a token-bucket limiter in `GitHubService` that caps mutating calls (POST/PATCH) at 1 req/sec.
-- [ ] Reads (GET) limited only by GitHub's own rate limit + existing exponential backoff.
+- [x] Module-level `_MUTATION_BUCKET` (rate=1, capacity=1) wraps POST/PATCH/DELETE calls (apply_labels, remove_label, post_comment, update_comment).
+- [x] GET calls remain unlimited (only constrained by GitHub's own rate limit + existing exponential backoff in search_issues).
 
 **Files:** `app/services/github_service.py`, new `app/core/rate_limiter.py`.
 

@@ -49,6 +49,10 @@ class IssueMetadata(BaseModel):
     related_closed_issue_id: Optional[int] = Field(None, description="ID of a similar closed issue as solution blueprint.")
 
     extraction_confidence: float = Field(..., ge=0.0, le=1.0)
+    extraction_mode: Literal["llm", "fallback"] = Field(
+        "llm",
+        description="'llm' = Gemini call; 'fallback' = circuit-breaker regex path.",
+    )
 
 
 class TriageAction(BaseModel):
