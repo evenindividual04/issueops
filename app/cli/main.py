@@ -1,6 +1,6 @@
 import asyncio
 import typer
-from typing import Annotated
+from typing import Annotated, Optional, List
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel

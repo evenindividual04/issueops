@@ -88,11 +88,7 @@ ISSUE TEXT:
 
     async def _generate_and_parse(self, prompt: str) -> IssueMetadata:
         """Helper to call LLM and validate Pydantic model."""
-        # Note: Using synchronous generate_content because async support is limited in some versions
-        # wrapping in simple awaitable if needed, but for CLI tool synchronous is fine or we can use ThreadPool
-        # For this phase, we will call it directly since `main.py` will likely be async or we just accept the blocking call
-        
-        response = self.model.generate_content(
+        response = await self.model.generate_content_async(
             prompt,
             generation_config={"temperature": 0.0}
         )

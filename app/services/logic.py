@@ -41,6 +41,13 @@ def apply(logic: Any, data: Any = None) -> Any:
         return all(eval_values)
     if operator == "or":
         return any(eval_values)
+    if operator == "in":
+        needle, haystack = eval_values[0], eval_values[1]
+        if isinstance(haystack, (list, str)):
+            return needle in haystack
+        return False
+    if operator == "!":
+        return not eval_values[0]
 
     return False
 

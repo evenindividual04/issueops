@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 import logging
 from typing import Optional, Dict, Any, List
@@ -328,29 +329,42 @@ class GitHubService:
         """
         Search for duplicate candidates using GitHub Search API.
         Returns lightweight dicts: number, title, body_snippet, state.
+        Retries on rate limit (429/403) with exponential backoff.
         """
         query = f"repo:{owner}/{repo} is:issue sort:relevance {keywords}"
         encoded_query = quote(query)
         url = f"{self.base_url}/search/issues?q={encoded_query}&per_page={limit}"
-        
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(url, headers=self.headers)
-                if response.status_code == 200:
-                    items = response.json().get("items", [])
-                    candidates = []
-                    for item in items:
-                        body = item.get("body") or ""
-                        candidates.append({
-                            "number": item["number"],
-                            "title": item["title"],
-                            "state": item["state"],
-                            "body_snippet": body[:500]
-                        })
-                    return candidates
-                else:
-                    logger.error(f"Search failed: {response.text}")
+            for attempt in range(self.max_retries):
+                try:
+                    response = await client.get(url, headers=self.headers)
+
+                    if response.status_code in (429, 403):
+                        retry_after = int(response.headers.get("Retry-After", 2 ** attempt))
+                        logger.warning(f"Rate limited (attempt {attempt + 1}). Retrying in {retry_after}s.")
+                        await asyncio.sleep(retry_after)
+                        continue
+
+                    if response.status_code == 200:
+                        items = response.json().get("items", [])
+                        return [
+                            {
+                                "number": item["number"],
+                                "title": item["title"],
+                                "state": item["state"],
+                                "body_snippet": (item.get("body") or "")[:500],
+                            }
+                            for item in items
+                        ]
+
+                    logger.error(f"Search failed ({response.status_code}): {response.text}")
                     return []
-            except Exception as e:
-                logger.error(f"Search error: {e}")
-                return []
+
+                except Exception as e:
+                    logger.error(f"Search error (attempt {attempt + 1}): {e}")
+                    if attempt == self.max_retries - 1:
+                        return []
+                    await asyncio.sleep(2 ** attempt)
+
+        return []
