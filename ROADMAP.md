@@ -33,19 +33,19 @@
 
 ### 1.2 Comment Deduplication
 
-- [ ] In `GitHubService`, add `find_bot_comment(owner, repo, issue_number, marker: str) -> Optional[int]`.
-- [ ] Add `update_comment(owner, repo, comment_id, body) -> bool`.
-- [ ] Embed a hidden HTML marker in every bot comment: `<!-- issueops:triage -->`.
-- [ ] Triage flow: search for existing marker, update if present, else create.
+- [x] In `GitHubService`, add `find_comment_by_marker(owner, repo, issue_number, marker) -> Optional[int]`.
+- [x] Add `update_comment(owner, repo, comment_id, body) -> bool`.
+- [x] Embed a hidden HTML marker in every bot comment: `<!-- issueops:triage -->`.
+- [x] Triage flow: `upsert_comment` searches for existing marker, updates if present, else creates.
 
 **Files:** `app/services/github_service.py`, `tests/test_github_service.py`.
 
 ### 1.3 Label Diff Apply
 
-- [ ] Extend `TriageAction` schema: add `labels_to_remove: List[str] = []`.
-- [ ] Add `GitHubService.remove_label(owner, repo, issue_number, label)`.
-- [ ] Triage flow: compute `(current_labels, desired_labels)`, diff, apply only the delta.
-- [ ] Never remove labels not owned by IssueOps — maintain a `MANAGED_LABELS` whitelist derived from the config file.
+- [x] Extend `TriageAction` schema: add `labels_to_remove: List[str] = []`.
+- [x] Add `GitHubService.remove_label(owner, repo, issue_number, label)` (404 treated as success).
+- [x] Triage flow: `sync_labels` diffs `(current, desired)` and applies only the delta.
+- [x] Managed-label whitelist derived from rules file + built-in `triage/*` set — humans' labels are never silently removed.
 
 **Files:** `app/models/schemas.py`, `app/services/triage.py`, `app/services/github_service.py`.
 

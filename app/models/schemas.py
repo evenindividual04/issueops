@@ -54,7 +54,14 @@ class IssueMetadata(BaseModel):
 class TriageAction(BaseModel):
     """The decision output from the Rules Engine."""
     priority_score: int = Field(..., ge=1, le=5)
-    labels: List[str] = Field(default_factory=list)
+    labels: List[str] = Field(
+        default_factory=list,
+        description="Labels to ensure are present on the issue.",
+    )
+    labels_to_remove: List[str] = Field(
+        default_factory=list,
+        description="Labels to remove from the issue if currently present.",
+    )
     reasoning: str = Field(..., description="Human-readable explanation of why this rule fired.")
 
 

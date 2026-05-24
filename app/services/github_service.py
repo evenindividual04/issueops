@@ -254,7 +254,7 @@ class GitHubService:
             return False
 
     async def apply_labels(self, owner: str, repo: str, issue_number: int, labels: List[str]) -> bool:
-        """Apply labels to an issue."""
+        """Apply labels to an issue (additive — GitHub merges, never removes)."""
         if not labels:
             return True
 
@@ -273,6 +273,67 @@ class GitHubService:
             except Exception as e:
                 logger.error(f"Failed to apply labels: {e}")
                 return False
+
+    async def remove_label(
+        self,
+        owner: str,
+        repo: str,
+        issue_number: int,
+        label: str,
+    ) -> bool:
+        """
+        Remove a single label from an issue. Returns True on success or if the
+        label was already absent (404 is treated as success).
+        """
+        encoded = quote(label, safe="")
+        url = (
+            f"{self.base_url}/repos/{owner}/{repo}/issues/{issue_number}"
+            f"/labels/{encoded}"
+        )
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                resp = await client.delete(url, headers=self.headers)
+                if resp.status_code == 404:
+                    return True
+                resp.raise_for_status()
+                logger.info(f"Removed label {label!r} from {owner}/{repo}#{issue_number}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to remove label {label!r}: {e}")
+                return False
+
+    async def sync_labels(
+        self,
+        owner: str,
+        repo: str,
+        issue_number: int,
+        current_labels: List[str],
+        desired_labels: List[str],
+        labels_to_remove: Optional[List[str]] = None,
+        managed_labels: Optional[List[str]] = None,
+    ) -> bool:
+        """
+        Idempotent diff-based label sync.
+
+        Adds labels in `desired_labels` not yet present. Removes labels from
+        `labels_to_remove`, restricted to `managed_labels` if provided
+        (prevents removing labels owned by humans/other bots).
+        """
+        current = set(current_labels)
+        desired = set(desired_labels)
+        to_add = sorted(desired - current)
+
+        remove_set: set[str] = set(labels_to_remove or [])
+        if managed_labels is not None:
+            remove_set &= set(managed_labels)
+        to_remove = sorted(remove_set & current)
+
+        ok = True
+        if to_add:
+            ok = await self.apply_labels(owner, repo, issue_number, to_add) and ok
+        for label in to_remove:
+            ok = await self.remove_label(owner, repo, issue_number, label) and ok
+        return ok
 
     async def fetch_issues(self, owner: str, repo: str, state: str = "open", limit: int = 10) -> List[GitHubIssue]:
         """Fetch multiple issues using Search API to exclude PRs."""
@@ -325,6 +386,72 @@ class GitHubService:
             except Exception as e:
                 logger.error(f"Failed to post comment: {e}")
                 return False
+
+    async def find_comment_by_marker(
+        self,
+        owner: str,
+        repo: str,
+        issue_number: int,
+        marker: str,
+    ) -> Optional[int]:
+        """
+        Return the id of the first comment on `issue_number` whose body contains
+        `marker`, or None if not found. Marker is typically an HTML comment like
+        '<!-- issueops:triage -->' embedded in bot comments so they can be
+        updated in-place across re-runs.
+        """
+        url = f"{self.base_url}/repos/{owner}/{repo}/issues/{issue_number}/comments"
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                resp = await client.get(url, headers=self.headers, params={"per_page": 100})
+                resp.raise_for_status()
+                for comment in resp.json():
+                    if marker in (comment.get("body") or ""):
+                        return int(comment["id"])
+                return None
+            except Exception as e:
+                logger.warning(f"find_comment_by_marker failed: {e}")
+                return None
+
+    async def update_comment(
+        self,
+        owner: str,
+        repo: str,
+        comment_id: int,
+        body: str,
+    ) -> bool:
+        """Edit an existing comment (PATCH /issues/comments/{id})."""
+        url = f"{self.base_url}/repos/{owner}/{repo}/issues/comments/{comment_id}"
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                resp = await client.patch(url, headers=self.headers, json={"body": body})
+                resp.raise_for_status()
+                logger.info(f"Updated comment {comment_id} on {owner}/{repo}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to update comment {comment_id}: {e}")
+                return False
+
+    async def upsert_comment(
+        self,
+        owner: str,
+        repo: str,
+        issue_number: int,
+        body: str,
+        marker: str,
+    ) -> bool:
+        """
+        Idempotent comment: if a comment containing `marker` already exists,
+        edit it. Otherwise post a new one. The marker is appended to the body
+        on insert.
+        """
+        existing_id = await self.find_comment_by_marker(owner, repo, issue_number, marker)
+        body_with_marker = body if marker in body else f"{body}\n\n{marker}"
+        if existing_id is not None:
+            return await self.update_comment(owner, repo, existing_id, body_with_marker)
+        return await self.post_comment(owner, repo, issue_number, body_with_marker)
 
     async def search_issues(self, owner: str, repo: str, keywords: str, limit: int = 5) -> List[Dict[str, Any]]:
         """

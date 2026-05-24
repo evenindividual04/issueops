@@ -5,7 +5,7 @@ import pytest
 from app.services.github_service import GitHubIssue, GitHubService
 
 
-def _make_async_client(mock_get=None, mock_post=None):
+def _make_async_client(mock_get=None, mock_post=None, mock_patch=None):
     """Build a mock httpx.AsyncClient context manager."""
     client = AsyncMock()
     client.__aenter__.return_value = client
@@ -14,6 +14,8 @@ def _make_async_client(mock_get=None, mock_post=None):
         client.get = mock_get
     if mock_post:
         client.post = mock_post
+    if mock_patch:
+        client.patch = mock_patch
     return client
 
 
@@ -216,3 +218,254 @@ def test_auth_header_present_when_token_given():
 def test_no_auth_header_when_no_token():
     svc = GitHubService()
     assert "Authorization" not in svc.headers
+
+
+# ── find_comment_by_marker / update_comment / upsert_comment ──────────────────
+
+@pytest.mark.asyncio
+async def test_find_comment_by_marker_hit():
+    comments_payload = [
+        {"id": 1, "body": "regular human comment"},
+        {"id": 2, "body": "bot wrote this <!-- issueops:triage -->"},
+    ]
+    resp = _make_response(200, comments_payload)
+    mock_get = AsyncMock(return_value=resp)
+    client = _make_async_client(mock_get=mock_get)
+
+    svc = GitHubService(github_token="t")
+    with patch("app.services.github_service.httpx.AsyncClient", return_value=client):
+        cid = await svc.find_comment_by_marker("o", "r", 1, "<!-- issueops:triage -->")
+    assert cid == 2
+
+
+@pytest.mark.asyncio
+async def test_find_comment_by_marker_miss_returns_none():
+    resp = _make_response(200, [{"id": 1, "body": "unrelated"}])
+    client = _make_async_client(mock_get=AsyncMock(return_value=resp))
+
+    svc = GitHubService(github_token="t")
+    with patch("app.services.github_service.httpx.AsyncClient", return_value=client):
+        cid = await svc.find_comment_by_marker("o", "r", 1, "<!-- issueops:triage -->")
+    assert cid is None
+
+
+@pytest.mark.asyncio
+async def test_find_comment_by_marker_swallows_errors():
+    mock_get = AsyncMock(side_effect=Exception("boom"))
+    client = _make_async_client(mock_get=mock_get)
+
+    svc = GitHubService(github_token="t")
+    with patch("app.services.github_service.httpx.AsyncClient", return_value=client):
+        cid = await svc.find_comment_by_marker("o", "r", 1, "marker")
+    assert cid is None
+
+
+@pytest.mark.asyncio
+async def test_update_comment_success():
+    resp = _make_response(200, {"id": 42, "body": "new body"})
+    mock_patch_call = AsyncMock(return_value=resp)
+    client = _make_async_client(mock_patch=mock_patch_call)
+
+    svc = GitHubService(github_token="t")
+    with patch("app.services.github_service.httpx.AsyncClient", return_value=client):
+        ok = await svc.update_comment("o", "r", 42, "new body")
+    assert ok is True
+
+
+@pytest.mark.asyncio
+async def test_update_comment_failure_returns_false():
+    mock_patch_call = AsyncMock(side_effect=Exception("network"))
+    client = _make_async_client(mock_patch=mock_patch_call)
+
+    svc = GitHubService(github_token="t")
+    with patch("app.services.github_service.httpx.AsyncClient", return_value=client):
+        ok = await svc.update_comment("o", "r", 42, "x")
+    assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_upsert_comment_creates_when_no_existing(monkeypatch):
+    svc = GitHubService(github_token="t")
+
+    async def _no_existing(*_a, **_kw):
+        return None
+
+    posted = {}
+
+    async def _post(owner, repo, num, body):
+        posted["body"] = body
+        return True
+
+    monkeypatch.setattr(svc, "find_comment_by_marker", _no_existing)
+    monkeypatch.setattr(svc, "post_comment", _post)
+
+    ok = await svc.upsert_comment("o", "r", 1, "hello", "<!-- m -->")
+    assert ok is True
+    assert "hello" in posted["body"] and "<!-- m -->" in posted["body"]
+
+
+@pytest.mark.asyncio
+async def test_upsert_comment_updates_when_existing(monkeypatch):
+    svc = GitHubService(github_token="t")
+
+    async def _existing(*_a, **_kw):
+        return 99
+
+    updated = {}
+
+    async def _update(owner, repo, cid, body):
+        updated["id"] = cid
+        updated["body"] = body
+        return True
+
+    monkeypatch.setattr(svc, "find_comment_by_marker", _existing)
+    monkeypatch.setattr(svc, "update_comment", _update)
+
+    ok = await svc.upsert_comment("o", "r", 1, "hello", "<!-- m -->")
+    assert ok is True
+    assert updated["id"] == 99
+    assert "hello" in updated["body"] and "<!-- m -->" in updated["body"]
+
+
+@pytest.mark.asyncio
+async def test_remove_label_success():
+    resp = _make_response(200, {})
+    mock_delete = AsyncMock(return_value=resp)
+    client = AsyncMock()
+    client.__aenter__.return_value = client
+    client.__aexit__.return_value = False
+    client.delete = mock_delete
+
+    svc = GitHubService(github_token="t")
+    with patch("app.services.github_service.httpx.AsyncClient", return_value=client):
+        ok = await svc.remove_label("o", "r", 1, "stale")
+    assert ok is True
+
+
+@pytest.mark.asyncio
+async def test_remove_label_404_is_success():
+    """Removing a non-existent label should not be treated as an error."""
+    resp = _make_response(404, "")
+    resp.raise_for_status.side_effect = None  # 404 path returns early
+    mock_delete = AsyncMock(return_value=resp)
+    client = AsyncMock()
+    client.__aenter__.return_value = client
+    client.__aexit__.return_value = False
+    client.delete = mock_delete
+
+    svc = GitHubService(github_token="t")
+    with patch("app.services.github_service.httpx.AsyncClient", return_value=client):
+        ok = await svc.remove_label("o", "r", 1, "ghost")
+    assert ok is True
+
+
+@pytest.mark.asyncio
+async def test_remove_label_failure():
+    mock_delete = AsyncMock(side_effect=Exception("network"))
+    client = AsyncMock()
+    client.__aenter__.return_value = client
+    client.__aexit__.return_value = False
+    client.delete = mock_delete
+
+    svc = GitHubService(github_token="t")
+    with patch("app.services.github_service.httpx.AsyncClient", return_value=client):
+        ok = await svc.remove_label("o", "r", 1, "x")
+    assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_sync_labels_only_adds_missing(monkeypatch):
+    svc = GitHubService(github_token="t")
+    calls = {"add": None, "remove": []}
+
+    async def _apply(owner, repo, num, labels):
+        calls["add"] = labels
+        return True
+
+    async def _remove(owner, repo, num, label):
+        calls["remove"].append(label)
+        return True
+
+    monkeypatch.setattr(svc, "apply_labels", _apply)
+    monkeypatch.setattr(svc, "remove_label", _remove)
+
+    ok = await svc.sync_labels(
+        "o", "r", 1,
+        current_labels=["bug"],
+        desired_labels=["bug", "critical"],
+    )
+    assert ok is True
+    assert calls["add"] == ["critical"]
+    assert calls["remove"] == []
+
+
+@pytest.mark.asyncio
+async def test_sync_labels_respects_managed_whitelist(monkeypatch):
+    """labels_to_remove must be intersected with managed_labels."""
+    svc = GitHubService(github_token="t")
+    removed: list[str] = []
+
+    async def _apply(*_a, **_kw):
+        return True
+
+    async def _remove(owner, repo, num, label):
+        removed.append(label)
+        return True
+
+    monkeypatch.setattr(svc, "apply_labels", _apply)
+    monkeypatch.setattr(svc, "remove_label", _remove)
+
+    await svc.sync_labels(
+        "o", "r", 1,
+        current_labels=["triage/low-confidence", "user-added"],
+        desired_labels=["critical"],
+        labels_to_remove=["triage/low-confidence", "user-added"],
+        managed_labels=["triage/low-confidence", "critical"],
+    )
+    assert removed == ["triage/low-confidence"]
+
+
+@pytest.mark.asyncio
+async def test_sync_labels_noop_when_already_in_sync(monkeypatch):
+    svc = GitHubService(github_token="t")
+    calls = {"add": 0, "remove": 0}
+
+    async def _apply(*_a, **_kw):
+        calls["add"] += 1
+        return True
+
+    async def _remove(*_a, **_kw):
+        calls["remove"] += 1
+        return True
+
+    monkeypatch.setattr(svc, "apply_labels", _apply)
+    monkeypatch.setattr(svc, "remove_label", _remove)
+
+    await svc.sync_labels(
+        "o", "r", 1,
+        current_labels=["bug", "critical"],
+        desired_labels=["bug", "critical"],
+    )
+    assert calls == {"add": 0, "remove": 0}
+
+
+@pytest.mark.asyncio
+async def test_upsert_does_not_double_marker(monkeypatch):
+    """If body already contains the marker, don't append it again."""
+    svc = GitHubService(github_token="t")
+
+    async def _no_existing(*_a, **_kw):
+        return None
+
+    posted = {}
+
+    async def _post(owner, repo, num, body):
+        posted["body"] = body
+        return True
+
+    monkeypatch.setattr(svc, "find_comment_by_marker", _no_existing)
+    monkeypatch.setattr(svc, "post_comment", _post)
+
+    body_with_marker = "hello <!-- m -->"
+    await svc.upsert_comment("o", "r", 1, body_with_marker, "<!-- m -->")
+    assert posted["body"].count("<!-- m -->") == 1

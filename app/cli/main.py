@@ -400,6 +400,40 @@ def report(
 
 
 _LOCK_LABELS = {"triage/locked", "triage/override"}
+_TRIAGE_COMMENT_MARKER = "<!-- issueops:triage -->"
+
+# Labels IssueOps may always remove (status labels it owns).
+_BUILTIN_MANAGED_LABELS = {
+    "triage/low-confidence",
+    "triage/needs-review",
+    "triage/manual",
+    "duplicate",
+}
+
+
+def _collect_managed_labels(rules_path: str) -> list[str]:
+    """
+    Union of labels referenced by any rule action + IssueOps' built-in
+    status labels. Used to scope `labels_to_remove` so a human-added
+    label is never silently removed.
+    """
+    import yaml
+
+    managed: set[str] = set(_BUILTIN_MANAGED_LABELS)
+    try:
+        with open(rules_path) as f:
+            raw = yaml.safe_load(f) or []
+        if isinstance(raw, dict):
+            raw = raw.get("rules", [])
+        for rule in raw:
+            action = (rule or {}).get("action", {}) if isinstance(rule, dict) else {}
+            for label in action.get("labels", []) or []:
+                managed.add(str(label))
+            for label in action.get("labels_to_remove", []) or []:
+                managed.add(str(label))
+    except Exception:
+        pass
+    return sorted(managed)
 
 
 @app.command()
@@ -513,7 +547,7 @@ def action(
 
                      if apply:
                          msg = f"Marking as duplicate of #{dupe_result.duplicate_number}.\nLogic: {dupe_result.reasoning}"
-                         asyncio.run(gh.post_comment(owner, repo_name, issue_number, msg))
+                         asyncio.run(gh.upsert_comment(owner, repo_name, issue_number, msg, _TRIAGE_COMMENT_MARKER))
                          asyncio.run(gh.apply_labels(owner, repo_name, issue_number, ["duplicate"]))
                      else:
                          console.print(f"[dim][DRY RUN] Would comment 'Duplicate of #{dupe_result.duplicate_number}' and label as 'duplicate'[/dim]")
@@ -527,7 +561,7 @@ def action(
             if 0.7 <= dupe_result.confidence < 0.9 and dupe_result.duplicate_number:
                  if apply:
                      msg = f"Possible duplicate of #{dupe_result.duplicate_number} (Confidence: {dupe_result.confidence:.2f}). Please check."
-                     asyncio.run(gh.post_comment(owner, repo_name, issue_number, msg))
+                     asyncio.run(gh.upsert_comment(owner, repo_name, issue_number, msg, _TRIAGE_COMMENT_MARKER))
                  else:
                      console.print(f"[dim][DRY RUN] Would comment 'Possible duplicate of #{dupe_result.duplicate_number}'[/dim]")
             # -----------------------
@@ -552,16 +586,25 @@ def action(
     console.print(f"Labels: {', '.join(action_result.labels)}")
     console.print(f"Reason: {action_result.reasoning}")
 
-    # 5. Apply
+    # 5. Apply — diff-based, never overwrites human-owned labels.
     if apply:
+        managed = _collect_managed_labels(rules_file)
         with console.status("Applying to GitHub..."):
-            success = asyncio.run(gh.apply_labels(owner, repo_name, issue_number, action_result.labels))
+            success = asyncio.run(gh.sync_labels(
+                owner,
+                repo_name,
+                issue_number,
+                current_labels=gh_issue.labels,
+                desired_labels=action_result.labels,
+                labels_to_remove=action_result.labels_to_remove,
+                managed_labels=managed,
+            ))
             if success:
-                console.print("[bold green]✔ Labels applied[/bold green]")
+                console.print("[bold green]✔ Labels synced[/bold green]")
                 cache_mgr.mark_processed(owner, repo_name, issue_number, body_for_signature)
                 cache_mgr.save()
             else:
-                console.print("[bold red]✘ Failed to apply labels[/bold red]")
+                console.print("[bold red]✘ Failed to sync labels[/bold red]")
                 raise typer.Exit(code=1)
 
 @app.command()
