@@ -1,143 +1,252 @@
-# IssueOps ⚡
+# IssueOps
 
-[![Marketplace](https://img.shields.io/badge/Marketplace-v1.0.0-blue.svg)](https://github.com/marketplace/actions/issueops)
-[![Tests](https://github.com/actions/toolkit/actions/workflows/main.yml/badge.svg)](https://github.com/actions/toolkit/actions/workflows/main.yml)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![CI](https://github.com/evenindividual04/issueops/actions/workflows/ci.yml/badge.svg)](https://github.com/evenindividual04/issueops/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-70%25%2B-brightgreen)](https://github.com/evenindividual04/issueops/actions/workflows/ci.yml)
+[![Marketplace](https://img.shields.io/badge/GitHub%20Marketplace-v1.0.0-blue)](https://github.com/marketplace/actions/issueops)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 
-**Governance as Code for GitHub Issues.**
+**AI-powered issue triage as a GitHub Action. Governance as code.**
 
-IssueOps treats your issue tracker like a production pipeline. It uses a deterministic AI engine to triage bugs, detect semantic duplicates, and curate "Good First Issues" for contributors—all defined in a simple YAML config.
+IssueOps treats your issue tracker like a production pipeline — the same discipline you apply to code review, applied to the issues that create the work. It uses a hybrid AI + rules engine to detect critical bugs, surface duplicate reports, and route "Good First Issues" to contributors automatically.
 
 ---
 
-## 🧠 How It Works
+## How It Works
 
-IssueOps is **not** a chatbot. It is a deterministic ETL pipeline for your backlog:
-
-```mermaid
-graph TD
-    Start[New Issue] --> Cache{Hash in Cache?};
-    Cache -- Yes --> Load[Load Metadata];
-    Cache -- No --> Extract[LLM Extraction];
-    
-    Extract --> Search[GitHub Semantic Search];
-    Search --> Verify{LLM Verifier};
-    
-    Verify -- "Match (Open)" --> Dup[🔴 Flag as Duplicate];
-    Verify -- "Match (Closed)" --> Art[💡 Link as Prior Art];
-    Verify -- "No Match" --> Rules[Rules Engine];
-    
-    Rules -->|High Severity| Label[🏷️ Label 'Critical'];
-    Rules -->|Easy + Test Hint| Board[✨ Add to Job Board];
+```
+New Issue Filed
+      │
+      ▼
+┌─────────────┐     Cache hit?    ┌──────────────┐
+│  SHA-256    │ ──── yes ────────▶│  Load result │
+│  Cache      │                   └──────┬───────┘
+└──────┬──────┘                          │
+       │ miss                            │
+       ▼                                 ▼
+┌─────────────┐    confidence < 0.75    ┌──────────────────┐
+│  Gemini AI  │ ──── low confidence ───▶│ triage/low-conf  │
+│  Extractor  │                         │ (human review)   │
+└──────┬──────┘                         └──────────────────┘
+       │ high confidence
+       ▼
+┌─────────────┐   open duplicate    ┌──────────────────┐
+│  Duplicate  │ ──── found ────────▶│ Flag + comment   │
+│  Detection  │                     └──────────────────┘
+└──────┬──────┘   closed duplicate
+       │ ──── found ────────▶ Link as Prior Art
+       │ no match
+       ▼
+┌─────────────┐
+│ Rules Engine│  ── YAML rules ──▶  Labels + Priority
+│ (JSON-Logic)│
+└─────────────┘
 ```
 
-*   **Extract**: LLMs convert messy text into structured data (Severity, Stack Traces, Skills).
-*   **Compare**: Checks against existing issues using semantic search (No Vector DB required).
-*   **Decide**: Applies your rules.yaml logic to label, assign, or prioritize.
+**Extract** — Gemini converts unstructured issue text into a typed schema (crash signals, difficulty, required skills, verification hints).
 
-### 🚀 Key Features
+**Gate** — If extraction confidence is below the configurable threshold (default 0.75), the issue is flagged for manual review instead of being auto-labeled. Uncertain AI decisions don't silently pollute your backlog.
 
-*   **🛡️ Smart Caching ("The Wallet Saver")**: Uses content-addressable hashing (SHA-256) to skip re-analysis of unchanged issues, reducing LLM costs by ~90%.
-*   **💡 Prior Art Linker**: Instead of just flagging duplicates, it finds **Closed Duplicates** and presents them as "Solved Examples" to help contributors fix bugs faster.
-*   **🎯 Test Radar**: Analyzes stack traces and file paths to suggest the exact `pytest` command needed to verify a fix.
-*   **🌱 Contributor Portal**: Auto-generates a static `job_board.html` and `feed.xml` (RSS) to attract new contributors.
-*   **⚙️ Governance as Code**: All logic is defined in a transparent YAML config.
+**Compare** — Semantic duplicate search using GitHub's Search API. No vector database required.
 
-### 🛡️ The "Polite Guest" Guarantee
+**Decide** — Deterministic JSON-Logic rules evaluate the structured data. Your rules, version-controlled alongside your code.
 
-We understand that automated tools can be scary. IssueOps adheres to strict safety protocols:
+---
 
-*   **No Rogue Actions**: We will never auto-close or auto-assign issues unless you explicitly enable those rules.
-*   **Read-Only Safe**: By default, the tool only applies labels. It does not delete data.
-*   **Confidence Gating**: If the AI is unsure (Confidence < 0.85), it defaults to "Needs Human Review" rather than making a wrong guess.
+## Features
 
-## 📦 Quick Start
+| Feature | Description |
+|---|---|
+| **Confidence Gating** | Auto-labeling only fires when extraction confidence ≥ threshold. Below it, issues get `triage/low-confidence` for human review. |
+| **SHA-256 Caching** | Content-addressable cache skips LLM re-analysis of unchanged issues. ~90% cost reduction in practice. |
+| **Duplicate Detection** | 3-step pipeline: keyword extraction → GitHub search → semantic verification. Distinguishes open duplicates (close it) from closed ones (link as prior art). |
+| **Test Radar** | Infers the exact `pytest` command to verify a fix from stack traces and file paths. Surfaces as `verification_hint`. |
+| **Prior Art Linker** | Closed duplicates become solution blueprints for contributors, not just noise. |
+| **Contributor Job Board** | Generates a static HTML portal + RSS feed of Good First Issues. |
+| **Governance as Code** | All triage logic lives in `.github/issueops.yaml`, versioned and reviewable in PRs. |
 
-Add this to `.github/workflows/triage.yml` in your repository.
+---
+
+## Quick Start
+
+### 1. Add the Action
 
 ```yaml
+# .github/workflows/triage.yml
 name: IssueOps Triage
 on:
   issues:
     types: [opened, edited]
-  schedule:
-    - cron: '0 0 * * *' # Run nightly to catch stale issues
 
 jobs:
   triage:
     runs-on: ubuntu-latest
     permissions:
       issues: write
-      contents: write # Required for Job Board publishing
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      # 1. Restore Cache (Critical for Performance)
-      - name: Cache Triage Data
-        uses: actions/cache@v3
+      - name: Cache triage data
+        uses: actions/cache@v4
         with:
           path: .triage_cache.json
-          # Invalidate cache if the config changes, but keep data across runs
-          key: triage-data-${{ github.repository }}-${{ hashFiles('.github/issueops.yaml') }}
-          restore-keys: |
-            triage-data-${{ github.repository }}-
+          key: triage-${{ github.repository }}-${{ hashFiles('.github/issueops.yaml') }}
+          restore-keys: triage-${{ github.repository }}-
 
-      # 2. Run IssueOps
-      - name: Run IssueOps
-        uses: anmolsen/issueops@v1
+      - uses: evenindividual04/issueops@v1.0.0
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          mode: 'scan'
 ```
 
-## ⚙️ Configuration (.github/issueops.yaml)
+### 2. Scaffold Your Rules
 
-You can control exactly how IssueOps behaves. If no file is found, we use Safe Defaults (flagging crashes and security risks).
+```bash
+pip install issueops
+issueops init       # creates .github/issueops.yaml
+issueops test       # verify your rules without a live API call
+```
+
+---
+
+## Configuration
+
+Rules live in `.github/issueops.yaml`. The `issueops init` command scaffolds a production-ready starter.
 
 ```yaml
-# Example Configuration
 rules:
+  # Safety: flag crashes and security issues immediately
   - name: "Critical Crash"
     condition:
       "or":
-        - "==": [{ "var": "is_crash" }, true]
-        - "==": [{ "var": "is_blocker" }, true]
+        - "==": [{var: is_crash}, true]
+        - "==": [{var: is_blocker}, true]
+        - "==": [{var: is_security_issue}, true]
     action:
-      priority: 5
-      labels: ["bug", "critical"]
-      reasoning: "System crash detected."
+      priority_score: 5
+      labels: ["bug", "critical", "security"]
+      reasoning: "System stability or security risk detected."
 
-  - name: "Good First Issue (Docs)"
+  # Community: surface good first issues
+  - name: "Good First Issue"
     condition:
       "and":
-         - "==": [{ "var": "difficulty" }, "easy"]
-         - "==": [{ "var": "area" }, "docs"]
+        - "==": [{var: difficulty}, "easy"]
+        - "==": [{var: has_reproduction_steps}, true]
+        - "!=": [{var: is_crash}, true]
     action:
-      priority: 1
-      labels: ["good-first-issue", "documentation"]
+      priority_score: 1
+      labels: ["good-first-issue", "help-wanted"]
+      reasoning: "Well-documented, low-complexity issue."
+
+  # Staleness: nudge inactive issues
+  - name: "Stale Waiting"
+    condition:
+      "and":
+        - ">": [{var: days_since_update}, 14]
+        - "in": ["waiting-for-info", {var: labels}]
+    action:
+      priority_score: 3
+      labels: ["stale"]
+      reasoning: "No response in 14 days."
 ```
 
-## 🎨 The Contributor Job Board
+### Extracted Fields
 
-Don't let "Good First Issues" get buried. IssueOps automatically generates a static portal for your community.
+Every issue is analysed and returns a typed schema:
 
-| Before (GitHub Default) | After (IssueOps Job Board) |
-|:---:|:---:|
-| Messy list of 50+ issues | Clean cards with "Python" and "Easy" tags |
+| Field | Type | Description |
+|---|---|---|
+| `is_crash` | bool | Crash/panic/segfault detected |
+| `is_security_issue` | bool | CVE or security vulnerability |
+| `is_blocker` | bool | Prevents build/deploy |
+| `difficulty` | enum | `easy` / `medium` / `hard` / `unknown` |
+| `required_skills` | list[str] | e.g. `["python", "docker"]` |
+| `primary_area` | enum | `frontend` / `backend` / `database` / `devops` / `docs` |
+| `verification_hint` | str | Suggested test command to verify a fix |
+| `extraction_confidence` | float | 0.0–1.0. Below threshold → manual review. |
 
+---
 
-## 🛠️ Local Development
-
-For developers who want to contribute to IssueOps itself:
+## CLI Reference
 
 ```bash
-# 1. Install (Editable Mode)
-pip install -e .
+# Scaffold config
+issueops init
 
-# 2. Configure .env
-cp .env.example .env
+# Test rules without live API
+issueops test --is-crash --label waiting-for-info --days-since-update 20
 
-# 3. Run CLI
-issueops scan owner/repo 123 --limit 5
+# Test end-to-end with real issue text
+issueops test --body "App crashes on startup with null pointer exception"
+
+# Analyse a specific issue (dry run)
+issueops scan owner/repo 42
+
+# Apply labels
+issueops scan owner/repo 42 --apply
+
+# Batch scan + generate contributor job board
+issueops report owner/repo --limit 20
+
+# Export CSV for accuracy auditing
+issueops audit owner/repo --limit 50
 ```
+
+---
+
+## Local Development
+
+```bash
+git clone https://github.com/evenindividual04/issueops
+cd issueops
+
+pip install -e ".[dev]"
+cp .env.example .env   # add GEMINI_API_KEY
+
+# Run tests
+pytest tests/ -v --cov=app
+
+# Lint
+ruff check app/ tests/
+
+# Type check
+mypy app/
+```
+
+### Architecture
+
+```
+app/
+├── cli/
+│   ├── main.py          # Typer CLI commands
+│   └── templates.py     # Golden config scaffold
+├── core/
+│   └── config.py        # Settings (env-based)
+├── models/
+│   └── schemas.py       # Pydantic models (IssueMetadata, TriageAction, …)
+└── services/
+    ├── extractor.py     # Gemini AI extraction
+    ├── triage.py        # JSON-Logic rules engine + confidence gate
+    ├── duplicate_service.py  # 3-step duplicate detection
+    ├── github_service.py     # GitHub API (async, rate-limit backoff)
+    ├── reporter.py      # HTML job board + RSS feed
+    ├── cache.py         # SHA-256 content-addressable cache
+    └── logic.py         # JSON-Logic evaluator
+```
+
+---
+
+## Design Decisions
+
+**Why a rules engine instead of pure AI?** AI is non-deterministic. Rules are auditable, version-controlled, and PR-reviewable. The AI handles the hard part (unstructured text → structured data); the rules engine handles the decisions. This gives you a system you can debug.
+
+**Why confidence gating?** A 0.3-confidence extraction silently applying `critical` labels would be worse than doing nothing. The gate ensures AI uncertainty surfaces as a human task, not a wrong label.
+
+**Why no vector database?** GitHub's Search API with keyword extraction covers 95% of real-world duplicate detection without the operational overhead of a vector store.
+
+---
+
+## License
+
+MIT © [Anmol Sen](https://github.com/evenindividual04)

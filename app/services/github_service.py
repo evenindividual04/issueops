@@ -1,9 +1,10 @@
 import asyncio
-import httpx
 import logging
-from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 from urllib.parse import quote
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -256,9 +257,9 @@ class GitHubService:
         """Apply labels to an issue."""
         if not labels:
             return True
-            
+
         url = f"{self.base_url}/repos/{owner}/{repo}/issues/{issue_number}/labels"
-        
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 response = await client.post(
@@ -277,26 +278,26 @@ class GitHubService:
         """Fetch multiple issues using Search API to exclude PRs."""
         url = f"{self.base_url}/search/issues"
         query = f"repo:{owner}/{repo} is:issue state:{state}"
-        params = {"q": query, "per_page": limit}
-        
+        params: dict[str, str] = {"q": query, "per_page": str(limit)}
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 response = await client.get(url, headers=self.headers, params=params)
                 response.raise_for_status()
-                
+
                 data = response.json()
                 items = data.get("items", [])
-                
+
                 issues = []
                 for item in items:
                     issues.append(GitHubIssue(
                         number=item.get("number", 0),
                         title=item.get("title", ""),
                         body=item.get("body", ""),
-                        comments=[], 
+                        comments=[],
                         url=item.get("html_url", ""),
                         state=item.get("state", ""),
-                        labels=[l["name"] for l in item.get("labels", [])],
+                        labels=[lbl["name"] for lbl in item.get("labels", [])],
                         created_at=item.get("created_at", ""),
                         updated_at=item.get("updated_at", ""),
                         author=item.get("user", {}).get("login", ""),
@@ -310,7 +311,7 @@ class GitHubService:
     async def post_comment(self, owner: str, repo: str, issue_number: int, body: str) -> bool:
         """Post a comment on an issue."""
         url = f"{self.base_url}/repos/{owner}/{repo}/issues/{issue_number}/comments"
-        
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 response = await client.post(

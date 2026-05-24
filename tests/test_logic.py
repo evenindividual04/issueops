@@ -1,6 +1,4 @@
-import pytest
 from app.services.logic import apply
-
 
 # ── basic operators ───────────────────────────────────────────────────────────
 

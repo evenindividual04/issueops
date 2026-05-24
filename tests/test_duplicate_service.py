@@ -1,8 +1,9 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from app.services.duplicate_service import DuplicateService
+import pytest
+
 from app.models.schemas import DuplicateResult
+from app.services.duplicate_service import DuplicateService
 
 
 def _make_services(keywords="auth crash", candidates=None, dup_result=None):

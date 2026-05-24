@@ -1,8 +1,9 @@
-import json
 import hashlib
-import os
+import json
 import logging
-from typing import Dict, Optional, Any
+import os
+from typing import Any, Dict, Optional
+
 from app.models.schemas import IssueMetadata
 
 logger = logging.getLogger(__name__)
@@ -13,7 +14,7 @@ class CacheManager:
     Key: SHA-256(issue_text)
     Value: Serialized IssueMetadata
     """
-    
+
     def __init__(self, cache_path: str = ".triage_cache.json"):
         self.cache_path = cache_path
         self.cache: Dict[str, Any] = {}

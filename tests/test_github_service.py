@@ -1,7 +1,8 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.github_service import GitHubService, GitHubIssue
+import pytest
+
+from app.services.github_service import GitHubIssue, GitHubService
 
 
 def _make_async_client(mock_get=None, mock_post=None):

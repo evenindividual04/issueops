@@ -1,15 +1,16 @@
-import pytest
 import os
 import sys
 
-# Ensure app modules are importable
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
+# Make the app package importable from tests/
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
 
-from app.models.schemas import IssueMetadata
+import pytest  # noqa: E402, F401 — used by fixtures
+
+from app.models.schemas import IssueMetadata  # noqa: E402
+
 
 @pytest.fixture
 def crash_metadata():
-    """Metadata for a critical crash."""
     return IssueMetadata(
         has_reproduction_steps=True,
         has_stacktrace=True,
@@ -23,12 +24,12 @@ def crash_metadata():
         difficulty="hard",
         required_skills=["python", "systems"],
         primary_area="backend",
-        extraction_confidence=0.95
+        extraction_confidence=0.95,
     )
+
 
 @pytest.fixture
 def feature_metadata():
-    """Metadata for a feature request (simulated)."""
     return IssueMetadata(
         has_reproduction_steps=False,
         has_stacktrace=False,
@@ -42,12 +43,12 @@ def feature_metadata():
         difficulty="medium",
         required_skills=["css", "react"],
         primary_area="frontend",
-        extraction_confidence=0.90
+        extraction_confidence=0.90,
     )
+
 
 @pytest.fixture
 def empty_metadata():
-    """Metadata for a confusing/empty issue."""
     return IssueMetadata(
         has_reproduction_steps=False,
         has_stacktrace=False,
@@ -61,5 +62,5 @@ def empty_metadata():
         difficulty="unknown",
         required_skills=[],
         primary_area="unknown",
-        extraction_confidence=0.2
+        extraction_confidence=0.2,
     )

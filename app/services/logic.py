@@ -1,5 +1,6 @@
 from typing import Any
 
+
 def apply(logic: Any, data: Any = None) -> Any:
     """
     Apply JSON-Logic to data.
@@ -20,7 +21,7 @@ def apply(logic: Any, data: Any = None) -> Any:
     # Operations
     if operator == "var":
         return get_var(data, values[0] if values else None, values[1] if len(values) > 1 else None)
-    
+
     # Recursive evaluation
     eval_values = [apply(v, data) for v in values]
 
@@ -36,7 +37,7 @@ def apply(logic: Any, data: Any = None) -> Any:
         return eval_values[0] < eval_values[1]
     if operator == "<=":
         return eval_values[0] <= eval_values[1]
-    
+
     if operator == "and":
         return all(eval_values)
     if operator == "or":
@@ -55,7 +56,7 @@ def get_var(data: Any, key: str, default: Any = None) -> Any:
     """Retrieve variable from data."""
     if key is None or key == "":
         return data
-    
+
     try:
         parts = str(key).split(".")
         current = data

@@ -1,14 +1,15 @@
 import asyncio
-import typer
-from typing import Annotated, Optional, List
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
-from rich.json import JSON
+from typing import Annotated, List, Optional
 
+import typer
+from rich.console import Console
+from rich.json import JSON
+from rich.panel import Panel
+from rich.table import Table
+
+from app.models.schemas import IssueMetadata
 from app.services.extractor import ExtractorService
 from app.services.triage import TriageService
-from app.models.schemas import IssueMetadata
 
 app = typer.Typer(help="GitHub Issue Triage Automation CLI")
 console = Console()
@@ -20,8 +21,9 @@ def init(
     """
     Scaffold a new configuration file with best-practice rules.
     """
-    from app.cli.templates import GOLDEN_CONFIG
     import os
+
+    from app.cli.templates import GOLDEN_CONFIG
 
     config_path = ".github/issueops.yaml"
 
@@ -57,8 +59,10 @@ def test(
     """
     import os
     if not rules:
-        if os.path.exists(".github/issueops.yaml"): rules = ".github/issueops.yaml"
-        elif os.path.exists("rules.yaml"): rules = "rules.yaml"
+        if os.path.exists(".github/issueops.yaml"):
+            rules = ".github/issueops.yaml"
+        elif os.path.exists("rules.yaml"):
+            rules = "rules.yaml"
         else:
             console.print("[red]No rules found. Run `issueops init` first.[/red]")
             raise typer.Exit(1)
@@ -81,16 +85,24 @@ def test(
     else:
         # Mode B: Manual Flags
         # Construct specific test case
+        from typing import Literal, cast
+        diff = cast(Literal["easy", "medium", "hard", "unknown"], difficulty)
         metadata = IssueMetadata(
-            has_reproduction_steps=True, # Default assumption for logic test
+            has_reproduction_steps=True,
             has_stacktrace=False,
             has_logs=False,
             is_crash=is_crash,
+            is_security_issue=False,
+            is_blocker=False,
+            operating_system=None,
+            environment="unknown",
             summary="Manual Test",
-            difficulty=difficulty,
+            difficulty=diff,
             required_skills=[],
+            primary_area="unknown",
+            verification_hint=None,
+            related_closed_issue_id=None,
             extraction_confidence=1.0,
-            primary_area="unknown"
         )
         console.print("[dim]Using Manual Metadata Flags[/dim]")
 
@@ -103,11 +115,11 @@ def test(
 
     # Trace
     results = triage.trace(metadata, context)
-    
+
     # Render Output
     console.print("\n[bold]Evaluation Trace:[/bold]")
     for res in results:
-        if res.matched:
+        if res.matched and res.action:
             console.print(f"[green][MATCH][/green] Rule '{res.rule_name}'")
             console.print(f"  -> Priority: {res.action.priority_score}")
             console.print(f"  -> Labels: {res.action.labels}")
@@ -139,7 +151,7 @@ def extract(file: str = typer.Argument(..., help="Path to text file containing t
         raise typer.Exit(code=1)
 
     console.print(f"[bold blue]Extracting metadata from {len(text)} chars...[/bold blue]")
-    
+
     try:
         metadata = asyncio.run(extractor.extract(text))
     except Exception as e:
@@ -178,7 +190,7 @@ def decide(
     except Exception as e:
         console.print(f"[red]Extraction Failed: {e}[/red]")
         raise typer.Exit(code=1)
-    
+
     console.print(f"  Confidence: {metadata.extraction_confidence}")
 
     console.print("[bold blue]Step 2: Rules Engine[/bold blue]")
@@ -207,8 +219,8 @@ def scan(
     """
     Universal Interface: Scan an issue and filter by persona (Maintainer vs Contributor).
     """
-    from app.services.github_service import GitHubService
     from app.core.config import settings
+    from app.services.github_service import GitHubService
 
     # 1. Setup
     with console.status("Initialising..."):
@@ -235,7 +247,7 @@ def scan(
 
     # 3. Extract
     text_content = f"Title: {gh_issue.title}\n\nBody:\n{gh_issue.body}\n\nComments:\n" + "\n".join(gh_issue.comments)
-    
+
     with console.status("Analysing..."):
         metadata = asyncio.run(extractor.extract(text_content))
 
@@ -257,17 +269,17 @@ def scan(
 
     # 6. Report
     console.print(Panel(f"Analysis for {repo}#{issue} ({role.upper()} View)", style="bold green"))
-    
+
     table = Table(show_header=True, header_style="bold magenta")
     table.add_column("Metric")
     table.add_column("Result")
-    
+
     table.add_row("Summary", metadata.summary)
     table.add_row("Difficulty", metadata.difficulty)
     table.add_row("Skills", ", ".join(metadata.required_skills))
     table.add_row("Priority", str(priority))
     table.add_row("Labels", ", ".join(action.labels))
-    
+
     console.print(table)
     console.print(f"[italic]{action.reasoning}[/italic]")
 
@@ -278,10 +290,10 @@ def scan(
             if not confirm:
                 console.print("[yellow]Aborted.[/yellow]")
                 raise typer.Exit()
-        
+
         with console.status("Applying to GitHub..."):
             success = asyncio.run(gh.apply_labels(owner, repo_name, issue, action.labels))
-            
+
             if success:
                 console.print("[bold green]✔ Labels applied![/bold green]")
             else:
@@ -299,9 +311,9 @@ def report(
     Generate the 'Contributor Job Board' (Static HTML).
     Scans recent issues and creates a filtered report.
     """
-    from app.services.github_service import GitHubService
-    from app.services.reporter import Reporter, BoardItem
     from app.core.config import settings
+    from app.services.github_service import GitHubService
+    from app.services.reporter import BoardItem, Reporter
 
     # Wrap everything in a single async function
     async def run_batch():
@@ -310,12 +322,12 @@ def report(
             gh = GitHubService(github_token=settings.GITHUB_TOKEN)
             extractor = ExtractorService()
             triage = TriageService("rules.yaml")
-            
+
             if "/" not in repo:
                  console.print("[red]Repo must be 'owner/repo'[/red]")
                  raise typer.Exit(code=1)
             owner, repo_name = repo.split("/")
-            
+
             try:
                 issues = await gh.fetch_issues(owner, repo_name, limit=limit)
             except Exception as e:
@@ -351,9 +363,10 @@ def report(
         # 3. Filter & Assemble
         board_items = []
         for res in results:
-            if not res: continue
+            if not res:
+                continue
             issue, meta, action = res
-            
+
             # Filter: Only P1 or P2 (Contributor Focused)
             if action.priority_score <= 2:
                 board_items.append(BoardItem(
@@ -371,9 +384,9 @@ def report(
 
         reporter = Reporter()
         site_url = f"https://github.com/{owner}/{repo_name}"
-        
+
         path = reporter.generate_board(board_items, site_url=site_url)
-        
+
         # Generate Feed
         feed_path = reporter.generate_feed(board_items, site_url=site_url)
 
@@ -394,11 +407,12 @@ def action(
     GitHub Action Entrypoint.
     Automatically detects context from GITHUB_EVENT_PATH and configuration from repo.
     """
-    import os
     import json
-    from app.services.github_service import GitHubService
+    import os
+
     from app.core.config import settings
-    
+    from app.services.github_service import GitHubService
+
     console.print("[bold blue]🚀 Starting AI Triage Action[/bold blue]")
 
     # 1. Detect Context
@@ -406,26 +420,26 @@ def action(
     if not event_path or not os.path.exists(event_path):
         console.print("[red]Error: GITHUB_EVENT_PATH not found. Are we running in an Action?[/red]")
         raise typer.Exit(code=1)
-        
+
     with open(event_path, "r") as f:
         event = json.load(f)
-        
+
     # Extract Issue details
     # Matches 'issues' event or 'issue_comment' event
     issue_data = event.get("issue")
     if not issue_data:
         console.print("[yellow]No issue object found in event. Skipping.[/yellow]")
         raise typer.Exit(0)
-        
+
     issue_number = issue_data["number"]
     repo_full = os.getenv("GITHUB_REPOSITORY") # "owner/repo"
-    
+
     if not repo_full:
         console.print("[red]GITHUB_REPOSITORY missing.[/red]")
         raise typer.Exit(code=1)
-        
+
     owner, repo_name = repo_full.split("/")
-    
+
     console.print(f"Target: [cyan]{owner}/{repo_name}#{issue_number}[/cyan]")
 
     # 2. "Polite Guest" Configuration Strategy
@@ -448,22 +462,22 @@ def action(
     # 3. Execution
     # Reuse the logic by calling the service components directly
     # (We can't easily call the other CLI commands, so we duplicate the simple flow)
-    
+
     with console.status("Running Triage Pipeline..."):
         try:
             gh = GitHubService(github_token=settings.GITHUB_TOKEN)
             extractor = ExtractorService()
             triage = TriageService(rules_file)
-            
+
             # Fetch
             gh_issue = asyncio.run(gh.fetch_issue(owner, repo_name, issue_number))
-            
+
             # --- DUPLICATE CHECK ---
             from app.services.duplicate_service import DuplicateService
             dupe_service = DuplicateService(gh, extractor)
-            
+
             dupe_result = asyncio.run(dupe_service.check_duplicate(owner, repo_name, gh_issue.title, gh_issue.body, gh_issue.number))
-            
+
             related_closed_issue_id = None
 
             if dupe_result.confidence >= 0.9 and dupe_result.duplicate_number:
@@ -471,7 +485,7 @@ def action(
                 if dupe_result.matched_issue_state == 'open':
                      console.print(f"[bold red]DUPLICATE DETECTED (OPEN):[/bold red] #{dupe_result.duplicate_number}")
                      console.print(f"Reason: {dupe_result.reasoning}")
-                     
+
                      if apply:
                          msg = f"Marking as duplicate of #{dupe_result.duplicate_number}.\nLogic: {dupe_result.reasoning}"
                          asyncio.run(gh.post_comment(owner, repo_name, issue_number, msg))
@@ -479,7 +493,7 @@ def action(
                      else:
                          console.print(f"[dim][DRY RUN] Would comment 'Duplicate of #{dupe_result.duplicate_number}' and label as 'duplicate'[/dim]")
                      return
-                
+
                 elif dupe_result.matched_issue_state == 'closed':
                      console.print(f"[bold blue]PRIOR ART DETECTED (CLOSED):[/bold blue] #{dupe_result.duplicate_number}")
                      console.print("Continuing analysis, but linking to this solved case.")
@@ -496,14 +510,14 @@ def action(
             # Extract
             text = f"{gh_issue.title}\n{gh_issue.body}\n" + "\n".join(gh_issue.comments)
             meta = asyncio.run(extractor.extract(text))
-            
+
             # Inject Prior Art
             if related_closed_issue_id:
                 meta.related_closed_issue_id = related_closed_issue_id
-            
+
             # Decide
             action_result = triage.evaluate(meta)
-            
+
         except Exception as e:
             console.print(f"[red]Pipeline Failed: {e}[/red]")
             raise typer.Exit(code=1)
@@ -533,8 +547,9 @@ def audit(
     Columns: ID, Title, AI_Difficulty, AI_Priority, Human_Review_Col
     """
     import csv
-    from app.services.github_service import GitHubService
+
     from app.core.config import settings
+    from app.services.github_service import GitHubService
 
     # Async Logic
     async def run_audit():
@@ -542,12 +557,12 @@ def audit(
             gh = GitHubService(github_token=settings.GITHUB_TOKEN)
             extractor = ExtractorService()
             triage = TriageService("rules.yaml")
-            
+
             if "/" not in repo:
                  console.print("[red]Repo must be 'owner/repo'[/red]")
                  raise typer.Exit(code=1)
             owner, repo_name = repo.split("/")
-            
+
             issues = await gh.fetch_issues(owner, repo_name, limit=limit)
             console.print(f"[blue]Found {len(issues)} issues. analyzing...[/blue]")
 
@@ -576,11 +591,11 @@ def audit(
         with open(filename, "w", newline="") as csvfile:
             fieldnames = ["id", "title", "ai_difficulty", "ai_priority", "ai_skills", "human_difficulty", "human_priority", "notes"]
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            
+
             writer.writeheader()
             for r in results:
                 writer.writerow(r)
-                
+
         console.print(f"[bold green]✔ Audit CSV generated: {filename}[/bold green]")
         console.print("Open this file to compare AI predictions vs Reality.")
 
